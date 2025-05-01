@@ -1,0 +1,135 @@
+-- 1
+-- Створення основної таблиці з усіма даними
+CREATE TABLE pandemic.infectious_cases
+(
+    "Entity" text,
+    "Code" text,
+    "Year" integer,
+    "Number_yaws" integer,
+    "pollo_cases" integer,
+    "cases_guinea_worm" integer,
+    "Number_rabies" FLOAT,
+    "Number_malaria" FLOAT,
+    "Number_hiv" FLOAT,
+    "Number_tuberculosis" FLOAT,
+    "Number_smallpox" INT,
+    "Number_cholera_cases" INT
+);
+
+ALTER TABLE IF EXISTS pandemic.infectious_cases
+    OWNER to dbcontacts_hmhc_user;
+	
+	
+	
+SET search_path TO pandemic;
+SELECT * FROM infectious_cases LIMIT 11;
+
+-- Створення нормалізованої таблиці країн
+CREATE TABLE pandemic.countries (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE
+);
+
+-- Заповнення таблиці країн унікальними значеннями
+INSERT INTO pandemic.countries (name, code)
+SELECT DISTINCT "Entity", "Code"
+FROM pandemic.infectious_cases
+WHERE "Code" IS NOT NULL;
+
+
+-- 2 
+-- Створення таблиці для нормалізованих записів (без дублікатів країн)
+CREATE TABLE pandemic.infectious_data (
+    id SERIAL PRIMARY KEY,
+    country_id INT REFERENCES pandemic.countries(id),
+    year INT,
+    number_yaws INT,
+    pollo_cases INT,
+    cases_guinea_worm INT,
+    number_rabies FLOAT,
+    number_malaria FLOAT,
+    number_hiv FLOAT,
+    number_tuberculosis FLOAT,
+    number_smallpox INT,
+    number_cholera_cases INT
+);
+
+
+
+-- Перенесення даних у нормалізовану структуру
+INSERT INTO pandemic.infectious_data (
+    country_id, year, number_yaws, pollo_cases, cases_guinea_worm,
+    number_rabies, number_malaria, number_hiv, number_tuberculosis,
+    number_smallpox, number_cholera_cases
+)
+SELECT
+    c.id,
+    ic."Year",
+    ic."Number_yaws",
+    ic."pollo_cases",
+    ic."cases_guinea_worm",
+    ic."Number_rabies",
+    ic."Number_malaria",
+    ic."Number_hiv",
+    ic."Number_tuberculosis",
+    ic."Number_smallpox",
+    ic."Number_cholera_cases"
+FROM pandemic.infectious_cases ic
+JOIN pandemic.countries c ON ic."Code" = c.code;
+
+
+SELECT COUNT(*) FROM infectious_cases
+SELECT COUNT(*) FROM infectious_data
+
+
+-- 3
+SELECT 
+    c.name AS country,
+    c.code,
+    ROUND(AVG(id.number_rabies)::NUMERIC, 2) AS avg_rabies,
+    ROUND(MIN(id.number_rabies)::NUMERIC, 2) AS min_rabies,
+	ROUND(MAX(id.number_rabies)::NUMERIC, 2) AS max_rabies,
+	ROUND(SUM(id.number_rabies)::NUMERIC, 2) AS total_rabies
+FROM 
+    pandemic.infectious_data id
+JOIN 
+    pandemic.countries c ON id.country_id = c.id
+WHERE 
+    id.number_rabies IS NOT NULL
+GROUP BY 
+    c.name, c.code
+ORDER BY 
+    avg_rabies DESC
+LIMIT 10;
+
+
+-- 4
+
+SELECT
+    id.year,
+    TO_DATE(id.year || '-01-01', 'YYYY-MM-DD') AS start_date,
+    CURRENT_DATE AS current_date,
+    DATE_PART('year', AGE(CURRENT_DATE, TO_DATE(id.year || '-01-01', 'YYYY-MM-DD'))) AS year_diff
+FROM pandemic.infectious_data id
+LIMIT 10;
+
+-- 5
+-- Створення функції
+
+CREATE OR REPLACE FUNCTION year_diff_from_now(input_year INT)
+RETURNS INT AS $$
+BEGIN
+    RETURN DATE_PART('year', AGE(CURRENT_DATE, TO_DATE(input_year || '-01-01', 'YYYY-MM-DD')));
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Виклик функції
+SELECT
+    year,
+    year_diff_from_now(year) AS years_passed
+FROM pandemic.infectious_data
+LIMIT 10;
+
+
